@@ -31,3 +31,6 @@ Thumbs.db
 
 # Vitest
 coverage/
+
+# Git worktrees
+.worktrees/
