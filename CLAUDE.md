@@ -61,7 +61,7 @@ Each organization deploying `furio-kit` supplies their own `@org/ui-kit` package
 
 `@org/ui-kit` must never be imported directly from `features`, `entities`, `widgets`, or `views`. All consumption goes through adapter components in `shared/ui`.
 
-```
+```bash
 shared/ui/
   Button/
     Button.tsx      ← "use client"; wraps @org/ui-kit Button

@@ -8,7 +8,7 @@ import { authAdapter } from '@/shared/auth'
  *
  * Add protected path patterns to the `matcher` config below.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const session = await authAdapter.validateRequest(request)
 
   if (!session) {
