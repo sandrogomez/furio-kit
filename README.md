@@ -18,8 +18,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Requirements
 
-- Node.js 20+
-- pnpm 9+
+- Node.js 22+
+- pnpm 10+
 
 ## Starter content (delete when you begin)
 
@@ -47,6 +47,7 @@ Everything else (providers, adapters, auth scaffolding, generators) stays.
 | `pnpm format` | Format with Biome |
 | `pnpm test` | Run tests with Vitest |
 | `pnpm test:watch` | Run tests in watch mode |
+| `pnpm tsc --noEmit` | TypeScript typecheck |
 | `pnpm generate` | Scaffold a new entity, feature, or widget slice |
 | `pnpm audit` | Check for vulnerable dependencies |
 
@@ -81,6 +82,12 @@ To audit locally:
 pnpm audit
 pnpm audit --fix   # auto-fix where possible
 ```
+
+## Documentation
+
+- **[Wiki](./docs/wiki/home.md)** — step-by-step guides for building on furio-kit
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — PR workflow and development setup
+- **[CLAUDE.md](./CLAUDE.md)** — full technical reference for AI assistants
 
 ## Maintainer setup (one-time)
 

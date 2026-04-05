@@ -1,0 +1,253 @@
+name: Architecture Guard
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  architecture-guard:
+    name: FSD Architecture Checks
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Check 1: FSD layer violations ──────────────────────────────────────
+      - name: Check FSD layer violations
+        id: fsd-layers
+        run: |
+          VIOLATIONS=""
+
+          # shared (level 0) must not import from entities, features, widgets, views
+          RESULT=$(grep -rnE "from ['\"]@/(entities|features|widgets|views)/" src/shared/ \
+            --include='*.ts' --include='*.tsx' 2>/dev/null || true)
+          if [ -n "$RESULT" ]; then
+            VIOLATIONS="${VIOLATIONS}
+          shared/ imports from higher layer:
+          ${RESULT}"
+          fi
+
+          # entities (level 1) must not import from features, widgets, views
+          RESULT=$(grep -rnE "from ['\"]@/(features|widgets|views)/" src/entities/ \
+            --include='*.ts' --include='*.tsx' 2>/dev/null || true)
+          if [ -n "$RESULT" ]; then
+            VIOLATIONS="${VIOLATIONS}
+          entities/ imports from higher layer:
+          ${RESULT}"
+          fi
+
+          # features (level 2) must not import from widgets, views
+          RESULT=$(grep -rnE "from ['\"]@/(widgets|views)/" src/features/ \
+            --include='*.ts' --include='*.tsx' 2>/dev/null || true)
+          if [ -n "$RESULT" ]; then
+            VIOLATIONS="${VIOLATIONS}
+          features/ imports from higher layer:
+          ${RESULT}"
+          fi
+
+          # widgets (level 3) must not import from views
+          RESULT=$(grep -rnE "from ['\"]@/views/" src/widgets/ \
+            --include='*.ts' --include='*.tsx' 2>/dev/null || true)
+          if [ -n "$RESULT" ]; then
+            VIOLATIONS="${VIOLATIONS}
+          widgets/ imports from higher layer:
+          ${RESULT}"
+          fi
+
+          # Cross-slice: same-layer imports are forbidden
+          for LAYER in entities features widgets; do
+            for SLICE_DIR in src/${LAYER}/*/; do
+              [ -d "$SLICE_DIR" ] || continue
+              SLICE=$(basename "$SLICE_DIR")
+              RESULT=$(grep -rnE "from ['\"]@/${LAYER}/" "$SLICE_DIR" \
+                --include='*.ts' --include='*.tsx' 2>/dev/null \
+                | grep -v "from ['\"]@/${LAYER}/${SLICE}['\"/]" || true)
+              if [ -n "$RESULT" ]; then
+                VIOLATIONS="${VIOLATIONS}
+          Cross-slice import in ${LAYER}/${SLICE}:
+          ${RESULT}"
+              fi
+            done
+          done
+
+          if [ -n "$VIOLATIONS" ]; then
+            printf '%s\n' "$VIOLATIONS" > /tmp/fsd-violations.txt
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "" > /tmp/fsd-violations.txt
+            echo "status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Check 2: Adapter pattern ────────────────────────────────────────────
+      - name: Check adapter pattern
+        id: adapter
+        run: |
+          VIOLATIONS=$(grep -rnE "from ['\"]@org/ui-kit['\"]" src/ \
+            --include='*.ts' --include='*.tsx' 2>/dev/null \
+            | grep -v "src/shared/ui/" || true)
+
+          if [ -n "$VIOLATIONS" ]; then
+            printf '%s\n' "$VIOLATIONS" > /tmp/adapter-violations.txt
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "" > /tmp/adapter-violations.txt
+            echo "status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Check 3: Barrel exports ─────────────────────────────────────────────
+      - name: Check barrel exports
+        id: barrels
+        run: |
+          VIOLATIONS=""
+
+          for LAYER in entities features widgets; do
+            for SLICE_DIR in src/${LAYER}/*/; do
+              [ -d "$SLICE_DIR" ] || continue
+              if [ ! -f "${SLICE_DIR}index.ts" ]; then
+                VIOLATIONS="${VIOLATIONS}
+          Missing index.ts in: ${SLICE_DIR}"
+              fi
+            done
+          done
+
+          if [ -n "$VIOLATIONS" ]; then
+            printf '%s\n' "$VIOLATIONS" > /tmp/barrel-violations.txt
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "" > /tmp/barrel-violations.txt
+            echo "status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Check 4: Deep imports ───────────────────────────────────────────────
+      - name: Check deep imports
+        id: deep-imports
+        run: |
+          # Flag any import with 3+ path segments after @/ for FSD sliced layers
+          # e.g. @/entities/user/api/get-users is forbidden; @/entities/user is allowed
+          VIOLATIONS=$(grep -rnE "from ['\"]@/(entities|features|widgets|views)/[^/]+/[^'\"]+['\"]" src/ \
+            --include='*.ts' --include='*.tsx' 2>/dev/null || true)
+
+          if [ -n "$VIOLATIONS" ]; then
+            printf '%s\n' "$VIOLATIONS" > /tmp/deep-import-violations.txt
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "" > /tmp/deep-import-violations.txt
+            echo "status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Post PR comment ─────────────────────────────────────────────────────
+      - name: Post PR comment
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          FSD_STATUS: ${{ steps.fsd-layers.outputs.status }}
+          ADAPTER_STATUS: ${{ steps.adapter.outputs.status }}
+          BARREL_STATUS: ${{ steps.barrels.outputs.status }}
+          DEEP_IMPORT_STATUS: ${{ steps.deep-imports.outputs.status }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const fsdStatus        = process.env.FSD_STATUS         || 'fail';
+            const adapterStatus    = process.env.ADAPTER_STATUS      || 'fail';
+            const barrelStatus     = process.env.BARREL_STATUS       || 'fail';
+            const deepImportStatus = process.env.DEEP_IMPORT_STATUS  || 'fail';
+
+            const icon = (s) => s === 'pass' ? '✅' : '❌';
+
+            function readViolations(path) {
+              try {
+                const content = fs.readFileSync(path, 'utf8').trim();
+                return content || null;
+              } catch {
+                return null;
+              }
+            }
+
+            const fsdViolations        = readViolations('/tmp/fsd-violations.txt');
+            const adapterViolations    = readViolations('/tmp/adapter-violations.txt');
+            const barrelViolations     = readViolations('/tmp/barrel-violations.txt');
+            const deepImportViolations = readViolations('/tmp/deep-import-violations.txt');
+
+            function section(title, status, violations) {
+              let out = `### ${icon(status)} ${title}\n`;
+              if (status === 'fail' && violations) {
+                out += `\n\`\`\`\n${violations}\n\`\`\`\n`;
+              }
+              return out;
+            }
+
+            const allPass = [fsdStatus, adapterStatus, barrelStatus, deepImportStatus]
+              .every(s => s === 'pass');
+
+            const summary = allPass
+              ? '**All architecture checks passed.**'
+              : '**One or more architecture checks failed. Please review the violations below.**';
+
+            const body = [
+              '## Architecture Guard',
+              '',
+              summary,
+              '',
+              section(
+                'FSD layer violations (imports must flow downward; no cross-slice imports)',
+                fsdStatus,
+                fsdViolations
+              ),
+              section(
+                'Adapter pattern (`@org/ui-kit` only in `src/shared/ui/`)',
+                adapterStatus,
+                adapterViolations
+              ),
+              section(
+                'Barrel exports (`index.ts` required for every slice)',
+                barrelStatus,
+                barrelViolations
+              ),
+              section(
+                'Deep imports (use slice root `@/entities/user`, not `@/entities/user/api/get-users`)',
+                deepImportStatus,
+                deepImportViolations
+              ),
+            ].join('\n');
+
+            // Find existing bot comment and update it, or create a new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(
+              c => c.user.type === 'Bot' && c.body.includes('## Architecture Guard')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      # ── Fail the job if any check failed ────────────────────────────────────
+      - name: Fail if violations found
+        if: |
+          steps.fsd-layers.outputs.status == 'fail' ||
+          steps.adapter.outputs.status == 'fail' ||
+          steps.barrels.outputs.status == 'fail' ||
+          steps.deep-imports.outputs.status == 'fail'
+        run: |
+          echo "Architecture violations detected. See PR comment for details."
+          exit 1

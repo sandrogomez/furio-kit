@@ -282,3 +282,40 @@ Tests are co-located with the code they test (`*.test.ts` / `*.test.tsx`). Use V
 - Server Components: test data logic in isolation; test rendered output via child Client Component tests
 - For new features: write the test before implementing
 - For bug fixes: write a failing test reproducing the bug first
+
+## Automation & Maintenance
+
+### GitHub Actions (required - runs on every PR)
+
+| Workflow | Purpose |
+|---|---|
+| `ci.yml` | Typecheck, lint, test |
+| `audit.yml` | Weekly vulnerability scan (`pnpm audit --audit-level=high`) |
+| `codeql.yml` | CodeQL security analysis |
+| `architecture-guard.yml` | FSD layer imports, adapter pattern, barrel exports, deep imports |
+| `dependabot-auto.yml` | Auto-merge patch/minor Dependabot PRs; labels major bumps `needs-review` |
+| `stale.yml` | Auto-close inactive PRs (14 days stale + 7 days to close) |
+
+### Claude Code Hooks (optional - active when Claude Code is installed)
+
+Configured in `.claude/settings.json`. These fire during Claude Code sessions:
+
+| Hook | Event | Purpose |
+|---|---|---|
+| `check-staged.sh` | Pre-commit (`git commit`) | Lint staged files, block debug/credential commits |
+| `check-architecture.sh` | Pre-push (`git push`) | Local FSD + adapter checks before CI |
+| `security-reminder.sh` | File edit (`Edit`/`Write`) | Context-aware reminders for proxy.ts, API files, .env |
+
+### Claude Code Triggers (optional - requires Claude Max)
+
+| Trigger | Schedule | Purpose |
+|---|---|---|
+| `weekly-health.md` | Every Monday 9:00 AM | Dep updates, audit diff, doc sync check |
+| `dep-review.md` | On-demand | Migration impact analysis for major version bumps |
+| `arch-review.md` | 1st and 15th monthly | Semantic architecture drift detection |
+
+### Multi-AI Coordination
+
+- `AGENTS.md` - instructions for all AI coding assistants
+- `.github/copilot/instructions.md` - GitHub Copilot custom instructions
+- Both derive from this `CLAUDE.md` as the source of truth

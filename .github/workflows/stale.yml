@@ -1,0 +1,36 @@
+name: Stale
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-stale: 14
+          days-before-close: 7
+          stale-pr-label: stale
+          stale-issue-label: stale
+          exempt-pr-labels: keep-open,work-in-progress,needs-review
+          exempt-issue-labels: keep-open,work-in-progress
+          stale-pr-message: >
+            This PR has been inactive for 14 days and has been marked as stale.
+            It will be closed in 7 days if there is no further activity.
+            Remove the `stale` label or comment to keep it open.
+          stale-issue-message: >
+            This issue has been inactive for 14 days and has been marked as stale.
+            It will be closed in 7 days if there is no further activity.
+            Remove the `stale` label or comment to keep it open.
+          close-pr-message: >
+            This PR has been closed due to inactivity. Feel free to reopen it
+            if you'd like to continue working on it.
+          close-issue-message: >
+            This issue has been closed due to inactivity. Feel free to reopen it
+            if it's still relevant.
