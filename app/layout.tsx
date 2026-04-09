@@ -12,7 +12,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-50 text-gray-900">
+      {/* suppressHydrationWarning suppresses false-positive hydration errors caused by
+          browser extensions (password managers, accessibility tools) injecting attributes
+          onto <body> before React hydrates. Per React spec, this only suppresses one level
+          deep — errors in children still surface normally. */}
+      <body suppressHydrationWarning className="min-h-screen bg-gray-50 text-gray-900">
         <StoreProvider>
           <QueryProvider>
             <Header />

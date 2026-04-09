@@ -283,6 +283,25 @@ Tests are co-located with the code they test (`*.test.ts` / `*.test.tsx`). Use V
 - For new features: write the test before implementing
 - For bug fixes: write a failing test reproducing the bug first
 
+## Known Gotchas
+
+### `mounted` guard for DOM-dependent libraries
+
+Libraries that read DOM dimensions at render time (`recharts` `ResponsiveContainer`, any chart or layout measurement library) cause hydration attribute mismatches in Next.js App Router — even inside `"use client"` components — because SSR still renders them server-side.
+
+Use a `mounted` guard to defer rendering until after the first client paint:
+
+```tsx
+const [mounted, setMounted] = useState(false)
+useEffect(() => { setMounted(true) }, [])
+
+{mounted && <ResponsiveContainer>...</ResponsiveContainer>}
+```
+
+**Applies to:** any library using `ResizeObserver`, `window`, `document`, or DOM measurements at render time.
+
+---
+
 ## Automation & Maintenance
 
 ### GitHub Actions (required - runs on every PR)
