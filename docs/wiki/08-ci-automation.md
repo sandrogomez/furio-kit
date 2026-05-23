@@ -6,7 +6,7 @@ This page documents every automated check, hook, and scheduled agent in furio-ki
 
 ## 1. GitHub Actions overview
 
-Six workflows run in `.github/workflows/`.
+Seven workflows run in `.github/workflows/`.
 
 | Workflow | File | Trigger | What it does | Blocks merge? |
 |---|---|---|---|---|
@@ -271,6 +271,7 @@ Merging the Release PR triggers a second run that creates a GitHub Release and g
 | `security:`, `fix:`, `build:` | patch (0.1.0 → 0.1.1) |
 | `feat:` | minor (0.1.0 → 0.2.0) |
 | `feat!:` or `BREAKING CHANGE:` footer | major (0.1.0 → 1.0.0) |
+| `refactor:`, `perf:`, `docs:` | visible in changelog — no version bump |
 | `chore:`, `test:`, `ci:`, `style:` | hidden — no release triggered |
 
 ### Security commit type

@@ -2,10 +2,10 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "node",
   "changelog-sections": [
-    { "type": "security", "section": "🔒 Security",      "hidden": false },
+    { "type": "security", "section": "🔒 Security",      "hidden": false, "bump": "patch" },
     { "type": "feat",     "section": "Features",         "hidden": false },
     { "type": "fix",      "section": "Bug Fixes",        "hidden": false },
-    { "type": "build",    "section": "Build System",     "hidden": false },
+    { "type": "build",    "section": "Build System",     "hidden": false, "bump": "patch" },
     { "type": "refactor", "section": "Code Refactoring", "hidden": false },
     { "type": "perf",     "section": "Performance",      "hidden": false },
     { "type": "docs",     "section": "Documentation",    "hidden": false },
