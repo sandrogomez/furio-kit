@@ -15,3 +15,6 @@ export const authAdapter = mockAdapter
 // Re-export types so callers only need one import path
 export type { AuthAdapter } from './auth-adapter'
 export type { AuthUser, Session } from './types'
+export { hasPermission } from './permissions'
+export type { Permission } from './permissions'
+export { usePermission } from './use-permission'

@@ -144,13 +144,20 @@ Define Server Actions in `actions/` files with `"use server"`. They handle mutat
 
 ```
 app/
-  layout.tsx          ← root layout; mounts providers + Header
-  page.tsx            ← delegates to src/views/home
-  loading.tsx         ← Suspense fallback UI
-  error.tsx           ← error boundary (must be "use client")
-  not-found.tsx       ← 404 UI
+  layout.tsx              ← root layout: pure HTML shell (no providers)
+  (app)/
+    layout.tsx            ← authenticated shell: StoreProvider · QueryProvider · Header
+    page.tsx              ← delegates to src/views/home
+    loading.tsx           ← Suspense fallback UI
+    error.tsx             ← error boundary (must be "use client")
+  (auth)/
+    login/
+      page.tsx            ← delegates to src/views/login
+  403/
+    page.tsx              ← forbidden page
+  not-found.tsx           ← 404 UI
   api/[...route]/
-    route.ts          ← API Route Handler (when REST endpoints are needed)
+    route.ts              ← API Route Handler (when REST endpoints are needed)
 ```
 
 ## Architecture: FSD Layers
@@ -211,7 +218,7 @@ Barrel exports are required at the slice boundary. Avoid deep barrel chains with
 
 ## Providers
 
-Both providers live in `src/shared/providers/` and are mounted in `app/layout.tsx`.
+Both providers live in `src/shared/providers/` and are mounted in `app/(app)/layout.tsx` (the authenticated route group shell, not the root layout).
 
 - **`QueryProvider`** — wraps `QueryClientProvider`; uses `useRef` to create one `QueryClient` per tree
 - **`StoreProvider`** — wraps the Zustand store context; uses `useRef` to prevent shared state across SSR requests
@@ -251,10 +258,31 @@ Never use template literals for className composition.
 | Initial page data | `async` Server Component | Direct fetch/DB, no client lib |
 | Remote data (client) | TanStack Query | Use `HydrationBoundary` for SSR handoff |
 | Mutations | Server Actions | Use TanStack Query mutation for optimistic UI |
-| Global UI state | Zustand | Factory pattern via `StoreProvider` |
+| Global UI state | Zustand — `shared/model/ui-store.ts` | Cross-cutting state (sidebar, theme, session user) |
+| Feature UI state | Zustand — `features/{name}/model/{name}-store.ts` | State owned by a single feature slice |
 | Form state | React Hook Form or native `<form>` with Server Actions | |
 
 Do not store server-fetched data in Zustand. Zustand is for UI state only.
+
+### Global vs. per-slice Zustand store
+
+**Use `shared/model/ui-store.ts`** for state that 2+ features need: sidebar open/closed, active locale, notification queue, session user fields.
+
+**Create a slice store** (`features/{name}/model/{name}-store.ts`) for state owned by one feature. The slice mounts its own `<FeatureProvider>` wrapping only the subtree that needs it. Pattern:
+
+```ts
+// features/cart/model/cart-store.ts
+import { createStore } from 'zustand'
+
+export type CartStore = ReturnType<typeof createCartStore>
+
+export const createCartStore = () =>
+  createStore<{ isOpen: boolean; open: () => void; close: () => void }>()(
+    (set) => ({ isOpen: false, open: () => set({ isOpen: true }), close: () => set({ isOpen: false }) }),
+  )
+```
+
+The slice provider follows the same `useRef` SSR-safe pattern as `StoreProvider` in `shared/providers`.
 
 ## Code Conventions
 
@@ -308,10 +336,10 @@ useEffect(() => { setMounted(true) }, [])
 
 | Workflow | Purpose |
 |---|---|
-| `ci.yml` | Typecheck, lint, test |
+| `ci.yml` | Typecheck, lint, test, production build |
 | `audit.yml` | Weekly vulnerability scan (`pnpm audit --audit-level=high`) |
 | `codeql.yml` | CodeQL security analysis |
-| `architecture-guard.yml` | FSD layer imports, adapter pattern, barrel exports, deep imports |
+| `architecture-guard.yml` | FSD layer imports, adapter pattern, barrel exports, deep imports, UI kit connection (opt-in) |
 | `dependabot-auto.yml` | Auto-merge patch/minor Dependabot PRs; labels major bumps `needs-review` |
 | `stale.yml` | Auto-close inactive PRs (14 days stale + 7 days to close) |
 
@@ -338,3 +366,47 @@ Configured in `.claude/settings.json`. These fire during Claude Code sessions:
 - `AGENTS.md` - instructions for all AI coding assistants
 - `.github/copilot/instructions.md` - GitHub Copilot custom instructions
 - Both derive from this `CLAUDE.md` as the source of truth
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **furio-kit** (797 symbols, 932 relationships, 6 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/furio-kit/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/furio-kit/clusters` | All functional areas |
+| `gitnexus://repo/furio-kit/processes` | All execution flows |
+| `gitnexus://repo/furio-kit/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

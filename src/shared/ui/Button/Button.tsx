@@ -2,14 +2,6 @@
 
 import type { ReactNode } from 'react'
 
-/**
- * Adapter for @org/ui-kit Button.
- *
- * To connect to the real design system, replace the implementation below with:
- *   import { Button as OrgButton } from '@org/ui-kit'
- * and map ButtonProps to OrgButton's props.
- */
-
 export interface ButtonProps {
   children: ReactNode
   onClick?: () => void
@@ -24,6 +16,9 @@ const variantStyles: Record<NonNullable<ButtonProps['variant']>, string> = {
   ghost: 'bg-transparent text-gray-700 hover:bg-gray-100',
 }
 
+// Fallback implementation used before @org/ui-kit is connected.
+// Set NEXT_PUBLIC_UI_KIT_CONNECTED=true once the real package is wired up —
+// this function will then throw to remind you to replace the stub.
 export function Button({
   children,
   variant = 'primary',
@@ -31,6 +26,14 @@ export function Button({
   disabled,
   onClick,
 }: ButtonProps) {
+  if (process.env.NEXT_PUBLIC_UI_KIT_CONNECTED === 'true') {
+    throw new Error(
+      '[furio-kit] Button adapter is not connected to @org/ui-kit. ' +
+        'Import { Button as OrgButton } from "@org/ui-kit" and wrap it here. ' +
+        'See docs/wiki/04-design-system.md.',
+    )
+  }
+
   return (
     <button
       type={type}

@@ -32,6 +32,7 @@ furio-kit is an enterprise React boilerplate by FurioLabs. It gives teams a prod
 | 7 | [Testing](./07-testing.md) | What to test per layer, co-location, RTL patterns, Vitest config |
 | 8 | [CI & Automation](./08-ci-automation.md) | GitHub Actions workflows, architecture guard, Dependabot, Claude Code triggers |
 | 9 | [Extending the Template](./09-extending.md) | Adding generators, workflows, hooks, upgrading majors, upstream sync |
+| 10 | [GitNexus](./10-gitnexus.md) | Code knowledge graph: impact analysis, execution flows, safe renaming |
 
 ## Where to Find What
 
@@ -50,3 +51,4 @@ furio-kit is an enterprise React boilerplate by FurioLabs. It gives teams a prod
 | How do all AI assistants behave in this repo? | [`AGENTS.md`](../../AGENTS.md) |
 | How do I contribute a PR, use worktrees, or run the generators? | [`CONTRIBUTING.md`](../../CONTRIBUTING.md) |
 | Where do I start as a first-time visitor? | [`README.md`](../../README.md) |
+| How do I use GitNexus to understand code, trace bugs, or assess impact? | [GitNexus](./10-gitnexus.md) |

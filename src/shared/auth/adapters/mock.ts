@@ -3,6 +3,13 @@ import type { AuthAdapter } from '../auth-adapter'
 import { SessionSchema } from '../types'
 import type { Session } from '../types'
 
+if (process.env.NODE_ENV === 'production') {
+  throw new Error(
+    '[furio-kit] mockAdapter cannot be used in production. ' +
+    'Set AUTH_PROVIDER=auth0 or AUTH_PROVIDER=ping and configure the adapter in src/shared/auth/index.ts.',
+  )
+}
+
 /**
  * Mock auth adapter for local development.
  *
@@ -11,8 +18,6 @@ import type { Session } from '../types'
  *   - When the `MOCK_AUTH_USER` env var is set to any non-empty value,
  *     returns a mock admin session so you can develop authenticated UIs
  *     without running a real identity provider.
- *
- * ⚠️  NEVER set MOCK_AUTH_USER in production. Gate on NODE_ENV if needed.
  */
 export const mockAdapter: AuthAdapter = {
   async getSession(_request: NextRequest): Promise<Session | null> {

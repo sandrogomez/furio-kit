@@ -1,28 +1,31 @@
-import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { authAdapter } from '@/shared/auth'
 
-/**
- * Middleware runs on the Edge runtime before every matched request.
- * It validates the session and redirects unauthenticated users to /login.
- *
- * Add protected path patterns to the `matcher` config below.
- */
-export async function proxy(request: NextRequest) {
+const PUBLIC_PATHS = ['/login', '/api/auth', '/403']
+
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+}
+
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const { pathname } = request.nextUrl
+
+  if (isPublic(pathname)) return NextResponse.next()
+
   const session = await authAdapter.validateRequest(request)
 
   if (!session) {
-    const loginUrl = authAdapter.getLoginUrl(request.nextUrl.pathname)
+    const loginUrl = authAdapter.getLoginUrl(pathname)
     return NextResponse.redirect(new URL(loginUrl, request.url))
   }
 
-  return NextResponse.next()
+  const requestId = request.headers.get('x-request-id') ?? crypto.randomUUID()
+  const response = NextResponse.next()
+  response.headers.set('x-request-id', requestId)
+  return response
 }
 
 export const config = {
-  matcher: [
-    '/dashboard/:path*',
-    '/settings/:path*',
-    // Add more protected routes here
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

@@ -10,7 +10,7 @@ Six workflows run in `.github/workflows/`.
 
 | Workflow | File | Trigger | What it does | Blocks merge? |
 |---|---|---|---|---|
-| CI | `ci.yml` | push/PR to `main` | TypeScript typecheck (`tsc --noEmit`), Biome lint, Vitest test suite | Yes |
+| CI | `ci.yml` | push/PR to `main` | TypeScript typecheck (`tsc --noEmit`), Biome lint, Vitest test suite, **production build** (`pnpm build`) | Yes |
 | Audit | `audit.yml` | push/PR to `main`, weekly Monday 08:00 UTC | `pnpm audit --audit-level=high` | Yes |
 | CodeQL | `codeql.yml` | push/PR to `main`, weekly Monday 08:00 UTC | GitHub CodeQL security analysis (JavaScript/TypeScript) | Yes |
 | Architecture Guard | `architecture-guard.yml` | PR to `main` (any `src/` change) | FSD layer violations, adapter pattern, barrel exports, deep imports | Yes |
@@ -26,6 +26,7 @@ A merge to `main` is blocked if any of the following fail:
 - **TypeScript errors** — `tsc --noEmit` exits non-zero (`ci.yml`)
 - **Lint failures** — Biome reports errors (`ci.yml`)
 - **Test failures** — any Vitest test fails or a test suite errors out (`ci.yml`)
+- **Build failures** — `pnpm build` exits non-zero; catches runtime import errors and missing env var issues that TypeScript alone cannot detect (`ci.yml`)
 - **High or critical vulnerabilities** — `pnpm audit --audit-level=high` finds a matching advisory (`audit.yml`)
 - **CodeQL findings** — GitHub's semantic analysis flags a security issue (`codeql.yml`)
 - **FSD violations** — a layer imports from above itself, or a slice imports from a peer slice (`architecture-guard.yml`)
@@ -41,7 +42,7 @@ Stale and Dependabot Auto-Merge do not block merge.
 
 `architecture-guard.yml` runs four independent checks on every PR that touches `src/`. The job posts a comment to the PR after each run and updates it on subsequent pushes, so you always see the current state.
 
-### The four checks
+### The five checks
 
 **Check 1: FSD layer imports**
 
@@ -78,6 +79,18 @@ import { getUsers } from '@/entities/user/api/get-users'
 
 The check flags any import matching `@/(entities|features|widgets|views)/<slice>/<anything>`.
 
+**Check 5: UI kit connection guard (opt-in)**
+
+When the repository variable `ENFORCE_UI_KIT_CONNECTED` is set to `true`, the workflow scans `src/shared/ui/` for the stub error message (`furio-kit.*adapter is not connected`). Any adapter still using the unconnected stub fails this check.
+
+Enable it once your design system package is installed and all adapters are wired:
+
+```bash
+gh variable set ENFORCE_UI_KIT_CONNECTED --body "true"
+```
+
+Leave it unset (the default) when developing before `@org/ui-kit` is available.
+
 ### Reading the PR comment
 
 The Architecture Guard comment uses this format:
@@ -101,7 +114,8 @@ Each failing check includes the exact file, line number, and import that trigger
 3. For adapter violations: add an adapter in `src/shared/ui/<Component>/` and import from `@/shared/ui` instead.
 4. For missing barrels: create `src/<layer>/<slice>/index.ts` and export the public surface.
 5. For deep imports: change the import path to the slice root (`@/entities/user`, not `@/entities/user/api/get-users`).
-6. Push the fix — the guard re-runs automatically and updates the comment.
+6. For UI kit connection (Check 5): wire the adapter to the real `@org/ui-kit` import and remove the stub throw.
+7. Push the fix — the guard re-runs automatically and updates the comment.
 
 ---
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { logger } from '@/shared/observability'
 import { UserSchema } from '../model/types'
 
 const UsersResponseSchema = z.array(UserSchema)
@@ -14,11 +15,16 @@ export async function getUsers() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
 
   if (!apiUrl) {
-    // No backend configured — return mock data so local dev works out of the box
+    logger.debug('users.fetch.mock', { reason: 'NEXT_PUBLIC_API_URL not set' })
     return UsersResponseSchema.parse(DEV_MOCK)
   }
 
   const res = await fetch(`${apiUrl}/users`, { next: { revalidate: 60 } })
-  if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`)
-  return UsersResponseSchema.parse(await res.json())
+  if (!res.ok) {
+    logger.error('users.fetch.failed', { status: res.status, url: `${apiUrl}/users` })
+    throw new Error(`Failed to fetch users: ${res.status}`)
+  }
+  const data = UsersResponseSchema.parse(await res.json())
+  logger.info('users.fetch.success', { count: data.length })
+  return data
 }

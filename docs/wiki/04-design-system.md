@@ -26,11 +26,28 @@ Adapters serve two purposes:
 
 ---
 
-## Installing your design system
+## Connecting your design system
+
+### Step 1: Set the connection flag
+
+furio-kit ships with **fail-loud adapter stubs**. When `NEXT_PUBLIC_UI_KIT_CONNECTED=true`, adapter components throw at render time with a clear error message if they have not been wired to a real `@org/ui-kit` import. This makes it impossible to accidentally ship stub components in a connected environment.
+
+Set the flag in your deployment environment (`.env.local` for development, your CI/CD config for production):
+
+```bash
+# .env.local
+NEXT_PUBLIC_UI_KIT_CONNECTED=true
+```
+
+Leave it unset or `false` while developing before the design system is available — the stubs render a Tailwind fallback instead of throwing.
+
+### Step 2: Install the package
 
 ```bash
 pnpm add @your-org/ui-kit
 ```
+
+### Step 3: Wire the adapters
 
 Then open each adapter file and replace the placeholder implementation with a real import:
 

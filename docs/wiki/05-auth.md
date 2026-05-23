@@ -1,6 +1,6 @@
 # 05 — Authentication
 
-**Quick start:** For local development, set `MOCK_AUTH_USER=1` in `.env.local` and verify `src/shared/auth/index.ts` imports `mockAdapter`. To go to production, swap the import to `auth0Adapter` or `pingAdapter`, add the required env vars, and deploy.
+**Quick start:** For local development, set `AUTH_PROVIDER=mock` in `.env.local`. The mock adapter is already the default and always returns a fake authenticated user, so you can develop against protected routes immediately. To go to production, set `AUTH_PROVIDER=auth0` or `AUTH_PROVIDER=ping`, swap the import in `src/shared/auth/index.ts`, add the required env vars, and deploy.
 
 ---
 
@@ -35,38 +35,92 @@ All session data is stored in `HttpOnly; Secure; SameSite=Strict` cookies set se
 
 ## 2. Route Protection
 
-Route protection is handled by `proxy.ts`, which acts as a Next.js middleware replacement. On every request that matches a protected path, `proxy.ts`:
+Route protection is handled by `proxy.ts` at the project root (Next.js 16's edge middleware file). It protects **all routes by default** using an allowlist approach.
 
-1. Calls `authAdapter.validateRequest(request)`.
-2. If the user is authenticated, allows the request to continue.
-3. If the session is missing or invalid, redirects the browser to `authAdapter.getLoginUrl(request.url)`.
+On every request, `proxy.ts`:
 
-The `config.matcher` array in `proxy.ts` declares which paths are protected:
+1. Checks if the path is in `PUBLIC_PATHS` (the allowlist). If so, lets the request through immediately.
+2. Calls `authAdapter.validateRequest(request)` for all other paths.
+3. If the user is authenticated, attaches a `x-request-id` header and allows the request to continue.
+4. If the session is missing or invalid, redirects the browser to `authAdapter.getLoginUrl(pathname)` with the original path as a `returnTo` query parameter.
 
 ```ts
 // proxy.ts (excerpt)
+const PUBLIC_PATHS = ['/login', '/api/auth']
+
+function isPublic(pathname: string) {
+  return PUBLIC_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  )
+}
+
 export const config = {
-  matcher: ['/dashboard/:path*', '/settings/:path*'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
 ```
 
-**To protect a new route**, add its path pattern to `config.matcher`:
+The `config.matcher` excludes Next.js static assets (`_next/static`, `_next/image`, `favicon.ico`) from the middleware entirely. Everything else is checked.
+
+**To make a new route public**, add it to `PUBLIC_PATHS`:
 
 ```ts
-export const config = {
-  matcher: [
-    '/dashboard/:path*',
-    '/settings/:path*',
-    '/reports/:path*',   // add new protected paths here
-  ],
-}
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/auth',
+  '/about',       // add new public paths here
+  '/pricing',
+]
 ```
 
-Next.js middleware path syntax applies: `:path*` matches zero or more segments, `:path+` matches one or more.
+**Do not change `config.matcher`** to allow public paths — that approach creates gaps. Always use the `PUBLIC_PATHS` allowlist instead, which makes public paths explicit and auditable in one place.
 
 ---
 
-## 3. Switching Providers
+## 3. Environment Validation and Mock Guard
+
+### Startup env validation
+
+`src/shared/env.ts` validates all required environment variables at server startup using Zod. The server refuses to start if any required variable is missing or invalid — the failure happens at deploy time, not at user request time.
+
+```ts
+// src/shared/env.ts
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']),
+  AUTH_PROVIDER: z.enum(['auth0', 'ping', 'mock']).default('mock'),
+})
+
+export const env = EnvSchema.parse({ ... })
+```
+
+This is triggered by `instrumentation.ts` (a Next.js startup hook):
+
+```ts
+// instrumentation.ts
+export async function register() {
+  await import('@/shared/env')
+}
+```
+
+To add a new required env var, add it to `EnvSchema` in `src/shared/env.ts`. The server will throw a clear Zod error on startup if it is missing.
+
+### Mock adapter production guard
+
+`src/shared/auth/adapters/mock.ts` throws at module load time if `NODE_ENV === 'production'`:
+
+```ts
+if (process.env.NODE_ENV === 'production') {
+  throw new Error(
+    '[furio-kit] mockAdapter cannot be used in production. ' +
+    'Set AUTH_PROVIDER=auth0 or AUTH_PROVIDER=ping and configure the adapter.'
+  )
+}
+```
+
+This makes it impossible to accidentally ship an unauthenticated app. The build succeeds but the server fails to start, surfacing the issue before any user traffic hits it.
+
+---
+
+## 4. Switching Providers
 
 Open `src/shared/auth/index.ts` and change the one import to select the active provider:
 
@@ -88,14 +142,14 @@ Only one import should be active at a time. No other file needs to change.
 
 ---
 
-## 4. Required Environment Variables
+## 5. Required Environment Variables
 
 Add these to `.env.local` (development) or your deployment environment. Never prefix auth secrets with `NEXT_PUBLIC_`.
 
 ### Mock
 
 ```bash
-MOCK_AUTH_USER=1
+AUTH_PROVIDER=mock
 ```
 
 ### Auth0
@@ -118,7 +172,7 @@ Keep `.env.example` up to date when adding new variables so other developers kno
 
 ---
 
-## 5. Adding a New Provider
+## 6. Adding a New Provider
 
 Follow these five steps to integrate a provider that is not already included.
 
@@ -172,22 +226,81 @@ YOUR_PROVIDER_REDIRECT_URI=    # must match the registered callback URL
 
 ---
 
-## 6. Testing Auth Locally
+## 7. Role-Based Access Control (RBAC)
+
+RBAC is implemented in `src/shared/auth/permissions.ts`. It defines a `Permission` type, a `ROLE_PERMISSIONS` map, and a `hasPermission()` function.
+
+### Permissions and roles
+
+```ts
+// src/shared/auth/permissions.ts
+export type Permission =
+  | 'users:read'
+  | 'users:write'
+  | 'settings:read'
+  | 'settings:write'
+  | 'reports:read'
+
+const ROLE_PERMISSIONS: Record<AuthUser['role'], Permission[]> = {
+  admin:  ['users:read', 'users:write', 'settings:read', 'settings:write', 'reports:read'],
+  member: ['users:read', 'reports:read'],
+  viewer: ['reports:read'],
+}
+```
+
+Add new permissions to the `Permission` type, then assign them to the appropriate roles in `ROLE_PERMISSIONS`.
+
+### Server-side (Server Components, Server Actions)
+
+Use `hasPermission()` directly with the authenticated user from `proxy.ts` or a Server Component:
+
+```ts
+import { hasPermission } from '@/shared/auth'
+
+// In a Server Component or Server Action:
+const user = await authAdapter.validateRequest(request)
+if (!user || !hasPermission(user, 'settings:write')) {
+  redirect('/403')
+}
+```
+
+### Client-side (Client Components)
+
+Use the `usePermission()` hook, which reads the session user from the Zustand store:
+
+```tsx
+'use client'
+import { usePermission } from '@/shared/auth'
+
+export function AdminPanel() {
+  const canWrite = usePermission('settings:write')
+  if (!canWrite) return null
+  return <div>Admin settings…</div>
+}
+```
+
+### 403 page
+
+A `app/403/page.tsx` renders the access-denied state. Redirect to it from Server Components or Server Actions when a permission check fails.
+
+---
+
+## 8. Testing Auth Locally
 
 Use the mock adapter for all local development. It skips any real token exchange and returns a hardcoded user object, so you can develop and test protected routes without a live identity provider.
 
 ```bash
 # .env.local
-MOCK_AUTH_USER=1
+AUTH_PROVIDER=mock
 ```
 
-Confirm `src/shared/auth/index.ts` is importing `mockAdapter` before starting the dev server. If you need to test the unauthenticated flow (e.g. the login redirect), unset or remove `MOCK_AUTH_USER`.
+Confirm `src/shared/auth/index.ts` is importing `mockAdapter` before starting the dev server. If you need to test the unauthenticated flow (e.g. the login redirect), temporarily remove `AUTH_PROVIDER` from `.env.local`.
 
 For integration tests that exercise auth logic, stub `authAdapter.validateRequest` at the module boundary rather than calling a real provider.
 
 ---
 
-## 7. Security Rules
+## 9. Security Rules
 
 These rules are non-negotiable. They reflect the security posture defined in [CLAUDE.md](../../CLAUDE.md) and must be maintained when adding or modifying auth code.
 

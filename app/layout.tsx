@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import { QueryProvider, StoreProvider } from '@/shared/providers'
-import { Header } from '@/widgets/header'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -14,15 +12,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       {/* suppressHydrationWarning suppresses false-positive hydration errors caused by
           browser extensions (password managers, accessibility tools) injecting attributes
-          onto <body> before React hydrates. Per React spec, this only suppresses one level
-          deep — errors in children still surface normally. */}
+          onto <body> before React hydrates. */}
       <body suppressHydrationWarning className="min-h-screen bg-gray-50 text-gray-900">
-        <StoreProvider>
-          <QueryProvider>
-            <Header />
-            <main>{children}</main>
-          </QueryProvider>
-        </StoreProvider>
+        {children}
       </body>
     </html>
   )

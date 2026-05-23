@@ -228,3 +228,53 @@ export function DashboardView() {
 ```
 
 Each suspended section streams independently. The page is interactive as soon as its own section resolves — users do not wait for the slowest fetch.
+
+---
+
+## 9. App Router Route Groups
+
+furio-kit uses Next.js [route groups](https://nextjs.org/docs/app/building-your-application/routing/route-groups) to scope layouts and providers without affecting URL paths.
+
+### Group structure
+
+```
+app/
+  layout.tsx           ← root layout: pure HTML shell (<html>, <body>, globals.css)
+  (app)/               ← authenticated area — route group, no URL segment
+    layout.tsx         ← mounts StoreProvider, QueryProvider, Header
+    page.tsx           ← / (dashboard home)
+    error.tsx          ← error boundary for authenticated routes
+    loading.tsx        ← Suspense fallback for authenticated routes
+  (auth)/              ← unauthenticated area — login, forgot password, etc.
+    layout.tsx         ← minimal shell, no providers or header
+    login/
+      page.tsx
+```
+
+### Why route groups matter
+
+**Provider scoping** — `StoreProvider` and `QueryProvider` are mounted in `app/(app)/layout.tsx`, not in the root layout. This means:
+- The root layout (`app/layout.tsx`) is a pure HTML shell with no client-side JavaScript.
+- Providers are only initialized for authenticated routes. The login page and other public routes have no Zustand store or TanStack Query context to initialize.
+
+**Separate layouts without URL segments** — `(app)` and `(auth)` do not appear in the URL. A file at `app/(app)/settings/page.tsx` resolves to `/settings`, and `app/(auth)/login/page.tsx` resolves to `/login`. The grouping is purely organizational.
+
+**Error and loading boundaries** — `app/(app)/error.tsx` and `app/(app)/loading.tsx` apply only to authenticated routes. A crash in the authenticated area does not affect the login page, and vice versa.
+
+### Root layout is a shell only
+
+```tsx
+// app/layout.tsx — no providers, no Header, no client code
+import type { ReactNode } from 'react'
+import './globals.css'
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}
+```
+
+All providers and shared UI (like `<Header>`) belong in `app/(app)/layout.tsx`.

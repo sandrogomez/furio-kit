@@ -138,6 +138,26 @@ jobs:
             echo "status=pass" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── Check 5: UI kit adapter connection (opt-in via ENFORCE_UI_KIT_CONNECTED repo var) ──
+      - name: Check design system adapters connected
+        id: ui-kit-connected
+        env:
+          ENFORCE: ${{ vars.ENFORCE_UI_KIT_CONNECTED }}
+        run: |
+          if [ "$ENFORCE" != "true" ]; then
+            echo "status=skip" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          STUBS=$(grep -rn "furio-kit.*adapter is not connected" src/shared/ui/ \
+            --include='*.ts' --include='*.tsx' 2>/dev/null || true)
+          if [ -n "$STUBS" ]; then
+            printf '%s\n' "$STUBS" > /tmp/ui-kit-violations.txt
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "" > /tmp/ui-kit-violations.txt
+            echo "status=pass" >> "$GITHUB_OUTPUT"
+          fi
+
       # ── Post PR comment ─────────────────────────────────────────────────────
       - name: Post PR comment
         if: always()
@@ -147,6 +167,7 @@ jobs:
           ADAPTER_STATUS: ${{ steps.adapter.outputs.status }}
           BARREL_STATUS: ${{ steps.barrels.outputs.status }}
           DEEP_IMPORT_STATUS: ${{ steps.deep-imports.outputs.status }}
+          UI_KIT_STATUS: ${{ steps.ui-kit-connected.outputs.status }}
         with:
           script: |
             const fs = require('fs');
@@ -180,8 +201,11 @@ jobs:
               return out;
             }
 
+            const uiKitStatus = process.env.UI_KIT_STATUS || 'skip';
+            const uiKitViolations = uiKitStatus !== 'skip' ? readViolations('/tmp/ui-kit-violations.txt') : null;
+
             const allPass = [fsdStatus, adapterStatus, barrelStatus, deepImportStatus]
-              .every(s => s === 'pass');
+              .every(s => s === 'pass') && (uiKitStatus === 'pass' || uiKitStatus === 'skip');
 
             const summary = allPass
               ? '**All architecture checks passed.**'
@@ -212,7 +236,12 @@ jobs:
                 deepImportStatus,
                 deepImportViolations
               ),
-            ].join('\n');
+              uiKitStatus !== 'skip' ? section(
+                'Design system adapters connected (`NEXT_PUBLIC_UI_KIT_CONNECTED=true` requires real wiring)',
+                uiKitStatus,
+                uiKitViolations
+              ) : '',
+            ].filter(Boolean).join('\n');
 
             // Find existing bot comment and update it, or create a new one
             const { data: comments } = await github.rest.issues.listComments({
@@ -247,7 +276,8 @@ jobs:
           steps.fsd-layers.outputs.status == 'fail' ||
           steps.adapter.outputs.status == 'fail' ||
           steps.barrels.outputs.status == 'fail' ||
-          steps.deep-imports.outputs.status == 'fail'
+          steps.deep-imports.outputs.status == 'fail' ||
+          steps.ui-kit-connected.outputs.status == 'fail'
         run: |
           echo "Architecture violations detected. See PR comment for details."
           exit 1

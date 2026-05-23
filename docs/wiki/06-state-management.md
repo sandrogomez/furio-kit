@@ -215,7 +215,7 @@ export function UserListClient() {
 }
 ```
 
-`QueryProvider` is already mounted in `app/layout.tsx` — no additional setup is needed.
+`QueryProvider` is already mounted in `app/(app)/layout.tsx` (scoped to authenticated routes) — no additional setup is needed.
 
 ---
 
@@ -297,7 +297,69 @@ Select only the slice of state each component needs. Selecting the whole store o
 
 ---
 
-## 6. Anti-Patterns
+## 6. Per-Slice Zustand Stores
+
+When a slice (feature, widget) needs UI state that is not shared globally, create a store scoped to that slice instead of adding it to the global `UIState` in `shared/model/ui-store.ts`.
+
+### When to use a per-slice store
+
+- The state is only relevant within one feature or widget (e.g., a multi-step form, a local filter panel, a cart drawer).
+- Adding it to `UIState` would pollute the global store with state that 90% of the app never needs.
+- The state needs to reset when the slice unmounts.
+
+### Pattern
+
+Follow the same factory + `useRef` + context pattern as the global store:
+
+```ts
+// src/features/cart/model/cart-store.ts
+import { createStore } from 'zustand'
+
+export interface CartState {
+  isOpen: boolean
+  open: () => void
+  close: () => void
+}
+
+export const createCartStore = () =>
+  createStore<CartState>()((set) => ({
+    isOpen: false,
+    open: () => set({ isOpen: true }),
+    close: () => set({ isOpen: false }),
+  }))
+
+export type CartStore = ReturnType<typeof createCartStore>
+```
+
+Provide it with a scoped provider in the slice's layout or root component:
+
+```tsx
+// src/features/cart/ui/CartProvider.tsx
+'use client'
+import { useRef } from 'react'
+import { createCartStore, CartStore } from '../model/cart-store'
+import { CartStoreContext } from './cart-store-context'
+
+export function CartProvider({ children }: { children: React.ReactNode }) {
+  const storeRef = useRef<CartStore | null>(null)
+  if (!storeRef.current) storeRef.current = createCartStore()
+  return (
+    <CartStoreContext.Provider value={storeRef.current}>
+      {children}
+    </CartStoreContext.Provider>
+  )
+}
+```
+
+Consume via a `useCartStore` hook that reads from the context — the same pattern as `useUIStore` in `shared/providers`.
+
+### What stays in the global store
+
+The global `UIState` in `shared/model/ui-store.ts` is for state shared across multiple slices (e.g., sidebar open/closed, global theme, session user). Anything that only one slice needs goes in a slice store.
+
+---
+
+## 7. Anti-Patterns
 
 ### Fetching in Client Components for the initial render
 
